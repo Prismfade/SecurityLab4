@@ -2,7 +2,10 @@ import socket
 import hashlib
 from aes import AES
 from key import Key
-from rsa import RSA
+from rsa import generateKey
+import rsa
+
+
 class Server:
     def __init__(self, addr, port, buffer_size=1024):
         self.addr = addr
@@ -27,65 +30,69 @@ class Server:
     def close(self):
         self.conn.close()
 
-###
+####
 if __name__ == '__main__':
-    server = Server('0.0.0.0', 37123)
-    
-    print("Waiting for key from client...")
-    rsa = RSA()
-    #Prints public and private key to be sent to client
-    print(f"Public Key: {rsa.public_key}"
-    print(f"Private Key: {rsa.private_key}")
+    #establish server connection
+    server = Server('0.0.0.0', 37128)
+    print(f"Server addr: {server.addr}")
 
-    #Send key to server
-    publicKey = f"{rsa.public_key[0]}|{rsa.public_key[1]}"
-    server.send(publicKey.encode('utf-8'))
-    print("Public key sent to client.")
+    #generate the aes keys
+    e,d,n = generateKey()
+    print(f"Public Key (e, n): ({e}, {n})")
+    print(f"Private Key (d, n): ({d}, {n})")
 
-    #Recieve encrypted AES
-    encryptedAESstr = server.recv(1024).decode('utf-8')
-    encrpyptedAESint = int(encryptedAES)
-    print(f"Encrypted AES key received: {encrpyptedAESint}")
-    
-    #Server decrpyt AES using RSA
-    decryptedAESKey = rsa.decrypt(encrpyptedAESint, rsa.private_key)
-    aesKey = decryptedAESKey.to_bytes((decryptedAESKey.bit_length() + 7) // 8, 'big')
-    print(f"Decrypted AES key: {aesKey.hex()}")
-    
+    #variable for public key which makes it easier to send to client
+    publicKey = f"{e},{n}".encode('utf-8')
+    server.send(publicKey)
+
+    #receive the encrypted aes key
+    encryptedBytes = server.recv(4096)
+
+    #to integer
+    encryptedInt = int.from_bytes(encryptedBytes, 'big')
+    print(f"Encrypted int: {encryptedInt}")
+
+    #decrypt the aes key
+    decryptedAes = rsa.decrypt(encryptedInt, d, n)
+    print(f"Decrypted AES int: {decryptedAes}")
+
+    #for size
+    keyLength = (n.bit_length() + 7) // 8
+    #to bytes
+    aesKeyBytes = decryptedAes.to_bytes(keyLength, 'big',signed = False)
+
+    #only take last elements if needed
+    aesKeyLength = aesKeyBytes[-32:]
+
+    #printing keys
+    print(f"Decrypted AES key: {aesKeyLength.hex()}")
     while True:
-    
-        aes = AES(key)
-
+        aes = AES(aesKeyLength)
         # TODO: your code here
-        print("Server is running...")
-
+    #message input
         msg = input('> ')
         if msg == 'exit':
             print("Requested to exit. Shutting down server.")
             break
 
         # TODO: your code here
-        #recieve data from client
-        data = server.recv(1024)
-
-        #info from client program and decrypting using our common key
+        #recieve input from client
+        data = server.recv(buffer_size=4096)
         encrypted, _, digest = data.rpartition(b'|')
+        #if sha digest sent matches calculated digests, then the messages are authenticated
         wantedDigest = hashlib.sha256(encrypted).hexdigest().encode('utf-8')
         print(f"Encrypted message was received: {encrypted.hex()}")
-
-        #sha digest is returned and checks for key match
+        #digests dont match, do this
         if digest != wantedDigest:
-            print("Key does not match.")
-            server.send(b"Message may have been intercepted.")
+            print("Digest mismatch. Please try again.")
+            server.send(b"Message may have been intercepted")
 
         else:
-            # if tags match then print that it does
+            #digests match, print that there is a match and proceed with chat
             print("Keys match, Message is verified.")
             decryptedText = aes.decrypt(encrypted)
-            #send decrypted message
-            server.send(decryptedText.encode('utf-8'))
-            #returning the encrypted message
-            print(f"Decrypted text: {decryptedText}")
+            server.send(msg.encode('utf-8'))
+            print(f"Message was decrypted: {decryptedText}")
+
 
     server.close()
-

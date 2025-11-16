@@ -1,3 +1,4 @@
+
 import random
 
 from cryptography.hazmat.primitives import hashes
@@ -25,19 +26,23 @@ class AES:
         block_size = self.key_len // 8
         plaintext_bytes += b'\x00' * (block_size - len(plaintext_bytes) % block_size)
         return self.encryptor.update(plaintext_bytes) + self.encryptor.finalize()
-
+    
     def decrypt(self, ciphertext: bytes) -> str:
         decrypted_bytes = self.decryptor.update(ciphertext) + self.decryptor.finalize()
-        # decrypted = bytes.decode(decrypted_bytes, 'ascii')
+        #decrypted = bytes.decode(decrypted_bytes, 'ascii')
+        #decrypted = bytes.decode(decrypted_bytes, 'ascii').rstrip('\x00')
         decrypted = decrypted_bytes.decode('utf-8', errors='ignore').rstrip('\x00')
+
         return decrypted
 
 
+
 if __name__ == '__main__':
+
     # use a random key
     key_len = 256
     key = bytes([random.randint(0, 255) for _ in range(key_len // 8)])
-
+    
     # instantiate an AES cryptor
     # now you can encrypt and decrypt messages
     cryptor = AES(key)
@@ -60,7 +65,7 @@ if __name__ == '__main__':
 
     # check the SHA256 of the ciphertext
     digest = hashes.Hash(hashes.SHA256())
-    digest.update(ciphertext)
+    digest.update(ciphertext) 
     hmac = digest.finalize()
     print(f"SHA256 of ciphertext: {hmac.hex()}")
     

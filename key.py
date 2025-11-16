@@ -11,9 +11,8 @@ class Key:
         pass
 
     def gen(self, key_len: int) -> bytes:
-        #added var to generate random bytes
+        #implemented code
         randomByte = random.randbytes(key_len)
-        #implementing bytearray
         bytearray(randomByte)
         return bytes([random.randint(0, 255) for _ in range(key_len // 8)])
     
@@ -45,3 +44,5 @@ if __name__ == '__main__':
     print("Read key from file:", key_file)
     print("Key:")
     print(key_bytes.hex())
+
+
