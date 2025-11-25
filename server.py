@@ -7,6 +7,8 @@ from rsa import generateKey
 import time
 import rsa
 from ca import PK_ca, ID_ca, handle_certificate_request
+from Crypto.Cipher import DES
+from Crypto.Util.Padding import pad, unpad
 
 class Server:
     def __init__(self, addr, port, buffer_size=1024):
@@ -47,8 +49,20 @@ class Server:
     def close(self):
         self.conn.close()
 
+    def validate_timestamp(self, timestamp:int, max_time:int = 500):
+        now = int(time.time())
+        if timestamp > now:
+            print("Timestamp is invalid")
+            return False
+        if now - timestamp > max_time:
+            print("Timestamp is invalid")
+            return False
+
+        return True
+
 
     def register_with_certificate_for_step1(self):
+        #des key
         self.Ks_tmp = os.urandom(8)
         #created timestamp 1
         TS1 = int(time.time())
@@ -158,12 +172,19 @@ class Server:
         self.Port_c = Port_c
         TS5 = int(TS5_str)
 
+        check_time = self.validate_timestamp(TS5)
+
+        if not check_time:
+            print("Timestamp is invalid")
+        else:
+            print("Timestamp is valid")
+
         print("(server) Step 5: Parsed Ktmp2 (hex):", Ktmp2_hex)
         print("(server) Step 5: Parsed ID_c:", ID_c)
         print("(server) Step 5: Parsed IP_c:", IP_c)
         print("(server) Step 5: Parsed Port_c:", Port_c)
         print("(server) Step 5: Parsed TS5:", TS5)
-    
+    ##
     #step 6 for sending out DES_k to client
     def send_session_key_step6(self):
         try:
@@ -174,7 +195,7 @@ class Server:
         
         #setup ks_hex
         self.Ks = os.urandom(8)
-        ks_hex = self.Ks.hex
+        ks_hex = self.Ks.hex()
 
         lifetime_session = 120
         TS6 = int(time.time())
@@ -182,19 +203,79 @@ class Server:
 
         try:
             ID_c = self.ID_c
-        except:
+        except AttributeError:
             ID_c = "ID-Client"
 
         plain_str = f"{ks_hex}|{lifetime_session}|{ID_c}|{TS6}"
 
         plain_bytes = plain_str.encode()
-        print("(server) Step6: Plaintext before AES(ktmp2):", plain_str)
+        print("(server) Step 6: Plaintext before DES(ktmp2):", plain_str)
 
-        aes = AES(ktmp2)
-        cipher_bytes = aes.encrypt(plain_bytes)
+        des_key = ktmp2[:8]
+        cipher = DES.new(des_key, DES.MODE_ECB)
+        cipher_bytes = cipher.encrypt(pad(plain_bytes, 8))
 
         self.send(cipher_bytes)
-        print("(server) Step 6: Send encrpyted session key to client.")
+        print("(server) Step 6: Send encrpyted session key to client.", cipher_bytes.hex())
+
+    def receive_service_request_step7(self):
+        try:
+            k_sess = self.Ks
+        except AttributeError:
+            print("(server) Error: k_sess not initalized")
+            return
+
+        cipher_bytes = self.recv()
+        print("(server) Step 7: Received encrypted message from client:", cipher_bytes.hex())
+
+        des_key = k_sess[:8]
+        cipher = DES.new(des_key, DES.MODE_ECB)
+
+        decrypted_bytes = cipher.decrypt(cipher_bytes)
+
+        plain_bytes = unpad(decrypted_bytes, 8)
+        plain_string = plain_bytes.decode()
+        print("(server) step 7: Decrypted message from client:", plain_string)
+
+        try:
+            req,TS7_string = plain_string.split('|')
+        except ValueError:
+            print("(server) Error: cannot parse message.")
+            return
+
+        self.req = req
+        self.TS7 = int(TS7_string)
+
+        check_time = self.validate_timestamp(self.TS7)
+
+        if not check_time:
+            print("Timestamp is invalid")
+        else:
+            print("Timestamp is valid")
+
+        print("(server) Step 7: Parse req:", self.req)
+        print("(server) Step 7: Parse TS7:", self.TS7)
+
+
+    def send_service_request_step8(self):
+        TS8 = int(time.time())
+        self.TS8 = TS8
+        self.data = 'take cis 3319 class this morning'
+
+        try:
+            k_sess = self.Ks
+        except AttributeError:
+            print("(server) Step 8: Error: k_sess not initalized")
+            return
+
+        plain_str = f"{self.data}|{TS8}"
+        plain_bytes = plain_str.encode()
+
+        des_key = k_sess[:8]
+        cipher = DES.new(des_key, DES.MODE_ECB)
+        cipher_bytes = cipher.encrypt(pad(plain_bytes, 8))
+        self.send(cipher_bytes)
+        print("(server) Step 8: Send encrypted message to client.", cipher_bytes.hex())
 
 
 if __name__ == '__main__':
@@ -206,5 +287,7 @@ if __name__ == '__main__':
     server.recieve_message_for_step3and4()
     server.send_certification_for_step4()
     server.recieve_registration_for_step5()
-    # server.send_session_key_step6()
+    server.send_session_key_step6()
+    server.receive_service_request_step7()
+    server.send_service_request_step8()
     server.close()
