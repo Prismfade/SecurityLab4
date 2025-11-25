@@ -1,1 +1,0 @@
-1. With the project we created rsa.py that has all the requirements needed to generate a public and private key. This can be used to encrypt, send from server to client, then decrypt. The RSA Key Generation itself works isolated, but I am still trying to figure out how to put it in our protocol. I need to reorganize how RSA is implemented.
